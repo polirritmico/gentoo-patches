@@ -1,0 +1,14 @@
+diff --git a/src/Dialogs/ReportsWidgets/StylesInCSSFilesWidget.cpp b/src/Dialogs/ReportsWidgets/StylesInCSSFilesWidget.cpp
+index a5b9935..a5ac4c8 100644
+--- a/src/Dialogs/ReportsWidgets/StylesInCSSFilesWidget.cpp
++++ b/src/Dialogs/ReportsWidgets/StylesInCSSFilesWidget.cpp
+@@ -136,8 +136,7 @@ void StylesInCSSFilesWidget::FilterEditTextChangedSlot(const QString &text)
+     for (int row = 0; row < root_item->rowCount(); row++) {
+         if (text.isEmpty() || root_item->child(row, 0)->text().toLower().contains(lowercaseText) ||
+             root_item->child(row, 1)->text().toLower().contains(lowercaseText) ||
+-            root_item->child(row, 2)->text().toLower().contains(lowercaseText) ||
+-            root_item->child(row, 3)->text().toLower().contains(lowercaseText)) {
++            root_item->child(row, 2)->text().toLower().contains(lowercaseText)) {
+             ui.fileTree->setRowHidden(row, parent_index, false);
+ 
+             if (first_visible_row == -1) {

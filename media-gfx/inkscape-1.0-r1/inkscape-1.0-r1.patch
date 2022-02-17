@@ -1,0 +1,31 @@
+diff --git a/src/live_effects/lpe-knot.cpp b/src/live_effects/lpe-knot.cpp
+index ede8614b72..efa8edf45b 100644
+--- a/src/live_effects/lpe-knot.cpp
++++ b/src/live_effects/lpe-knot.cpp
+@@ -451,17 +451,24 @@ LPEKnot::doEffect_path (Geom::PathVector const &path_in)
+ 
+                 int geom_sign = ( cross(flag_i[1], flag_j[1]) < 0 ? 1 : -1);
+                 bool i0_is_under = false;
++                bool swap_required = false;
+                 double width = interruption_width;
+                 if ( crossing_points[p].sign * geom_sign > 0 ){
+                     i0_is_under = ( i == i0 );
+                 }
+                 else if (crossing_points[p].sign * geom_sign < 0) {
+                     if (j == i0){
++                        swap_required = true;
+                         i0_is_under = true;
+                     }
+                 }
+-                i0_is_under = crossing_points[p].sign != 0 && both ? true : i0_is_under;
+-                if (i0_is_under && j == i0) {
++                if (crossing_points[p].sign != 0 && both) {
++                    i0_is_under = true;
++                    if (j == i0) {
++                        swap_required = true;
++                    }
++                }
++                if (swap_required) {
+                     std::swap(i, j);
+                     std::swap(ti, tj);
+                     std::swap(flag_i, flag_j);

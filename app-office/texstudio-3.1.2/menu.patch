@@ -1,0 +1,33 @@
+diff --git a/src/texstudio.cpp b/src/texstudio.cpp
+index 547af61..67c518f 100644
+--- a/src/texstudio.cpp
++++ b/src/texstudio.cpp
+@@ -895,8 +895,8 @@ void Texstudio::setupMenus()
+ 	newManagedAction(menu, "debughistory", tr("Debug undo stack"), SLOT(editDebugUndoStack()));
+ #endif
+ 	menu->addSeparator();
+-	newManagedAction(menu, "copy", tr("&Copy"), SLOT(editCopy()), QKeySequence::Copy, "edit-copy");
+ 	newManagedEditorAction(menu, "cut", tr("C&ut"), "cut", QKeySequence::Cut, "edit-cut");
++	newManagedAction(menu, "copy", tr("&Copy"), SLOT(editCopy()), QKeySequence::Copy, "edit-copy");
+ 	newManagedAction(menu, "paste", tr("&Paste"), SLOT(editPaste()), QKeySequence::Paste, "edit-paste");
+ 
+ 	submenu = newManagedMenu(menu, "selection", tr("&Selection"));
+@@ -1347,7 +1347,7 @@ void Texstudio::setupMenus()
+ 		QList<QAction *> baseContextActions;
+ 		QAction *sep = new QAction(menu);
+ 		sep->setSeparator(true);
+-		baseContextActions << getManagedActions(QStringList() << "copy" << "cut" << "paste", "main/edit/");
++		baseContextActions << getManagedActions(QStringList() << "cut" << "copy" << "paste", "main/edit/");
+ 		baseContextActions << getManagedActions(QStringList() << "main/edit2/pasteAsLatex" << "main/edit2/convertTo" << "main/edit/selection/selectAll");
+ 		baseContextActions << sep;
+ 		baseContextActions << getManagedActions(QStringList() << "previewLatex" << "removePreviewLatex", "main/edit2/");
+@@ -11266,8 +11266,8 @@ void Texstudio::customMenuTOC(const QPoint &pos){
+             menu.addSeparator();
+         }
+ 
+-        menu.addAction(tr("Copy"), this, SLOT(editSectionCopy()));
+         menu.addAction(tr("Cut"), this, SLOT(editSectionCut()));
++        menu.addAction(tr("Copy"), this, SLOT(editSectionCopy()));
+         menu.addAction(tr("Paste Before"), this, SLOT(editSectionPasteBefore()));
+         menu.addAction(tr("Paste After"), this, SLOT(editSectionPasteAfter()));
+         menu.addSeparator();
