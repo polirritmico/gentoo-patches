@@ -1,0 +1,37 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index aebce40..c58fbfd 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -174,7 +174,7 @@ ELSE()
+     SET(H2_DATA_PATH "${CMAKE_INSTALL_DATADIR}/hydrogen")
+     SET(H2_SYS_PATH "${CMAKE_INSTALL_FULL_DATAROOTDIR}/hydrogen")
+ ENDIF()
+-SET(H2_USR_PATH ".hydrogen")
++SET(H2_USR_PATH ".local/share/hydrogen")
+ 
+ SET(MAX_INSTRUMENTS 1000 CACHE STRING "Maximum number of instruments")
+ SET(MAX_COMPONENTS  32   CACHE STRING "Maximum number of components")
+diff --git a/src/core/Helpers/Filesystem.cpp b/src/core/Helpers/Filesystem.cpp
+index 0a9f517..7009e70 100644
+--- a/src/core/Helpers/Filesystem.cpp
++++ b/src/core/Helpers/Filesystem.cpp
+@@ -101,7 +101,7 @@ QString Filesystem::__usr_cfg_path;
+ #elif WIN32
+ 	QString Filesystem::__usr_log_path = QDir::homePath().append( "/.hydrogen/" LOG_FILE );
+ #else
+-	QString Filesystem::__usr_log_path = QDir::homePath().append( "/" H2_USR_PATH "/" LOG_FILE);
++	QString Filesystem::__usr_log_path = QDir::homePath().append( "/.local/share/hydrogen/" LOG_FILE);
+ #endif
+ 
+ 
+@@ -133,8 +133,8 @@ bool Filesystem::bootstrap( Logger* logger, const QString& sys_path )
+ 	__usr_cfg_path = QDir::homePath().append( "/.hydrogen/" USR_CONFIG ) ;
+ #else
+ 	__sys_data_path = H2_SYS_PATH "/data/";
+-	__usr_data_path = QDir::homePath().append( "/" H2_USR_PATH "/data/" );
+-	__usr_cfg_path = QDir::homePath().append( "/" H2_USR_PATH "/" USR_CONFIG );
++	__usr_data_path = QDir::homePath().append( "/.local/share/hydrogen/" );
++	__usr_cfg_path = QDir::homePath().append( "/.config/hydrogen/" USR_CONFIG );
+ #endif
+ 	if( sys_path!=nullptr ) __sys_data_path = sys_path;
+ 
