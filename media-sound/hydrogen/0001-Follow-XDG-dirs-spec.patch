@@ -1,0 +1,150 @@
+From 7df76f85352385393c068bfd08827d60a0b0cce4 Mon Sep 17 00:00:00 2001
+From: polirritmico <ebray187@gmail.com>
+Date: Mon, 4 Jul 2022 15:30:34 -0400
+Subject: [PATCH] Follow XDG dirs spec
+
+Uses QStandardPaths to get cache, data and config XDG folders.
+The config file go to $XDG_CONFIG_HOME/hydrogen/hydrogen.conf
+The cache folder go to $XDG_CACHE_HOME/hydrogen/
+And all the data subfolders (drumkits, plugins, playlists, etc.) go to
+$XDG_DATA_HOME/hydrogen/ along with the hydrogen.log file.
+
+If old folder (~/.hydrogen/) is found, use that instead of the XDG paths.
+
+The __usr_*_paths are setted outside a function, so QStandardPaths isn't
+avaliable to get the XDG paths. Also no APPNAME is avaliable until
+setApplicationName() is called after the Filesystem::check_usr_paths()
+is used. To avoid this update_usr_paths() is added at the begining of
+check_usr_paths() to update the correct values from QStandardPaths.
+---
+ src/core/Helpers/Filesystem.cpp | 43 +++++++++++++++++++++++++++++----
+ src/core/Helpers/Filesystem.h   |  5 ++++
+ 2 files changed, 43 insertions(+), 5 deletions(-)
+
+diff --git a/src/core/Helpers/Filesystem.cpp b/src/core/Helpers/Filesystem.cpp
+index 0a9f517..a3896c9 100644
+--- a/src/core/Helpers/Filesystem.cpp
++++ b/src/core/Helpers/Filesystem.cpp
+@@ -30,6 +30,7 @@
+ #include <QtCore/QFileInfo>
+ #include <QtCore/QCoreApplication>
+ #include <QDomDocument>
++#include <QStandardPaths>
+ 
+ #ifdef H2CORE_HAVE_OSC
+ #include <core/NsmClient.h>
+@@ -94,15 +95,17 @@ const QString Filesystem::playlists_filter_name = "Hydrogen Playlists (*.h2playl
+ 
+ QString Filesystem::__sys_data_path;
+ QString Filesystem::__usr_data_path;
++QString Filesystem::__usr_cache_path;
+ QString Filesystem::__usr_cfg_path;
+ 
+ #ifdef Q_OS_MACX
+-	QString Filesystem::__usr_log_path =QDir::homePath().append( "/Library/Application Support/Hydrogen/" LOG_FILE );
++	QString Filesystem::__usr_log_path = QDir::homePath().append( "/Library/Application Support/Hydrogen/" );
+ #elif WIN32
+-	QString Filesystem::__usr_log_path = QDir::homePath().append( "/.hydrogen/" LOG_FILE );
++	QString Filesystem::__usr_log_path = QDir::homePath().append( "/.hydrogen/" );
+ #else
+-	QString Filesystem::__usr_log_path = QDir::homePath().append( "/" H2_USR_PATH "/" LOG_FILE);
++	QString Filesystem::__usr_log_path = QDir::homePath().append( "/" H2_USR_PATH "/" );
+ #endif
++bool __usr_log_path_initialized = false;
+ 
+ 
+ QStringList Filesystem::__ladspa_paths;
+@@ -379,9 +382,27 @@ bool Filesystem::check_sys_paths()
+ 	return ret;
+ }
+ 
++void Filesystem::update_usr_paths()
++{
++	// If the old path exists (e.g. ~/.hydrogen), old path is used; else uses
++	// QStandardPaths (follow XDG on Linux).
++	if ( !QFileInfo::exists( QFileInfo(__usr_cfg_path).absolutePath() ) )
++	{
++		__usr_cfg_path = QStandardPaths::writableLocation(
++				QStandardPaths::AppConfigLocation).append("/" USR_CONFIG);
++		__usr_data_path = QStandardPaths::writableLocation(
++				QStandardPaths::AppLocalDataLocation).append("/");
++		__usr_cache_path = QStandardPaths::writableLocation(
++				QStandardPaths::CacheLocation).append("/");
++	} else {
++		__usr_cache_path = __usr_data_path + CACHE;
++	}
++}
+ 
+ bool Filesystem::check_usr_paths()
+ {
++	update_usr_paths();
++
+ 	bool ret = true;
+ 	if( !path_usable( tmp_dir() ) ) ret = false;
+ 	if( !path_usable( __usr_data_path ) ) ret = false;
+@@ -393,6 +414,7 @@ bool Filesystem::check_usr_paths()
+ 	if( !path_usable( plugins_dir() ) ) ret = false;
+ 	if( !path_usable( scripts_dir() ) ) ret = false;
+ 	if( !path_usable( songs_dir() ) ) ret = false;
++	if( !path_usable( QFileInfo(__usr_cfg_path).absolutePath() ) ) ret = false;
+ 	if( !file_writable( usr_config_path() ) ) ret = false;
+ 
+ 	if ( ret ) INFOLOG( QString( "user path %1 is usable." ).arg( __usr_data_path ) );
+@@ -461,6 +483,17 @@ QString Filesystem::playlist_xsd_path( )
+ }
+ QString Filesystem::log_file_path()
+ {
++	if ( !__usr_log_path_initialized )
++	{
++		if ( !QFileInfo::exists( __usr_log_path ) )
++		{
++			__usr_log_path = QStandardPaths::writableLocation(
++					QStandardPaths::AppLocalDataLocation).append( "/" LOG_FILE );
++		} else {
++			__usr_log_path.append( LOG_FILE );
++		}
++		__usr_log_path_initialized = true;
++	}
+ 	return __usr_log_path;
+ }
+ 
+@@ -527,11 +560,11 @@ QString Filesystem::playlist_path( const QString& pl_name )
+ }
+ QString Filesystem::cache_dir()
+ {
+-	return __usr_data_path + CACHE;
++	return __usr_cache_path;
+ }
+ QString Filesystem::repositories_cache_dir()
+ {
+-	return __usr_data_path + CACHE + REPOSITORIES;
++	return __usr_cache_path + REPOSITORIES;
+ }
+ QString Filesystem::demos_dir()
+ {
+diff --git a/src/core/Helpers/Filesystem.h b/src/core/Helpers/Filesystem.h
+index 8967399..0d02a68 100644
+--- a/src/core/Helpers/Filesystem.h
++++ b/src/core/Helpers/Filesystem.h
+@@ -357,6 +357,10 @@ namespace H2Core
+ 		 * \param path the path to search in for drumkits
+ 		 */
+ 		static QStringList drumkit_list( const QString& path );
++		/**
++		 * Update the data, config and cache paths with QStandardPaths.
++		 */
++		static void update_usr_paths();
+ 		/**
+ 		 * \return true if all the asked permissions are ok
+ 		 * \param path the path to the file to check
+@@ -390,6 +394,7 @@ namespace H2Core
+ 		 */
+ 		static QString __sys_data_path;     ///< the path to the system files
+ 		static QString __usr_data_path;     ///< the path to the user files
++		static QString __usr_cache_path;    ///< the path to the cache files
+ 		static QString __usr_cfg_path;      ///< the path to the user config file
+ 		static QString __usr_log_path;      ///< the path to the log file
+ 		static QStringList __ladspa_paths;  ///< paths to laspa plugins
+-- 
+2.35.1
+
