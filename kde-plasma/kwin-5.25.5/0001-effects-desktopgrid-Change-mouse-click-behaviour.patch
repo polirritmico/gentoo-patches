@@ -24,13 +24,13 @@ index 771dcc8..d44d36c 100644
 -                window.desktop = -1;
 -            } else {
 -                window.desktop = desktopView.desktop.x11DesktopNumber;
-+            if (eventPoint.event.button === Qt.MiddleButton) {
++            if (eventPoint.event.button === Qt.RightButton) {
 +                if (window.desktop > -1) {
 +                    window.desktop = -1;
 +                } else {
 +                    window.desktop = desktopView.desktop.x11DesktopNumber;
 +                }
-+            } else if (eventPoint.event.button === Qt.RightButton) {
++            } else if (eventPoint.event.button === Qt.MiddleButton) {
 +                window.closeWindow();
              }
          }
