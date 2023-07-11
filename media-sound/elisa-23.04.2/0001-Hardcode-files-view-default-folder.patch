@@ -1,0 +1,25 @@
+From edf65de2e93c9832e66ee3523ee54964c61bf0c6 Mon Sep 17 00:00:00 2001
+From: polirritmico <ebray187@gmail.com>
+Date: Tue, 11 Jul 2023 13:43:36 -0400
+Subject: [PATCH] Hardcode files view default folder
+
+---
+ src/viewslistdata.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/viewslistdata.cpp b/src/viewslistdata.cpp
+index 13da83e..a46552f 100644
+--- a/src/viewslistdata.cpp
++++ b/src/viewslistdata.cpp
+@@ -130,7 +130,7 @@ public:
+                                                ViewManager::DelegateWithoutSecondaryText,
+                                                ViewManager::ViewHideRating,
+                                                ViewManager::IsFlatModel,
+-                                               QUrl::fromLocalFile(QDir::rootPath())
++                                               QUrl{QStringLiteral("file:///home/eduardo/Biblioteca/Música")}
+                                               },
+                                               {{i18nc("@title:window Title of the file radios browser view", "Radio Stations")},
+                                                QUrl{QStringLiteral("image://icon/radio")},
+-- 
+2.41.0
+
