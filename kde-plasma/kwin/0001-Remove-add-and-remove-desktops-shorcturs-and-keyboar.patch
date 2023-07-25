@@ -1,7 +1,7 @@
 From b42ac1cc6854d942537ce5d3365a160c8e65139f Mon Sep 17 00:00:00 2001
 From: polirritmico <ebray187@gmail.com>
 Date: Wed, 12 Jul 2023 18:16:05 -0400
-Subject: [PATCH] Remove add and remove desktops shorcturs and keyboard space
+Subject: [PATCH] Remove add and remove desktops shortcuts and keyboard space
 
 ---
  src/effects/desktopgrid/qml/main.qml | 6 +-----
