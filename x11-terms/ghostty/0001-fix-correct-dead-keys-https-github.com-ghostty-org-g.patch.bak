@@ -1,0 +1,299 @@
+From f70ba14abd989938ba7183872a698ade67ceecf9 Mon Sep 17 00:00:00 2001
+From: Mitchell Hashimoto <m@mitchellh.com>
+Date: Mon, 3 Feb 2025 08:19:08 -0800
+Subject: [PATCH] apprt/gtk: handle input methods that end preedit before
+ commit
+
+Fixes #5494
+
+When ibus/fcitx is not running (the GTK "simple" input method is
+active), the preedit end event triggers _before_ the commit event. For
+both ibus/fcitx, the opposite is true. We were relying on this ordering.
+
+This commit changes the GTK input handling to not rely on this ordering.
+Instead, we encode our composing state into the boolean state of whether
+a key event is pressed. This happens before ANY input method events are
+triggered.
+
+Tested dead key handling on: X11/Wayland, ibus/fcitx/none.
+---
+ CONTRIBUTING.md           |  83 ++++++++++++++++++++++++++++
+ src/apprt/gtk/Surface.zig | 112 ++++++++++++++++++++++++++------------
+ 2 files changed, 159 insertions(+), 36 deletions(-)
+
+diff --git a/CONTRIBUTING.md b/CONTRIBUTING.md
+index a7233b2c22..e4d148df87 100644
+--- a/CONTRIBUTING.md
++++ b/CONTRIBUTING.md
+@@ -78,6 +78,89 @@ pull request will be accepted with a high degree of certainty.
+ > not open a WIP pull request to discuss a feature. Instead, use a discussion
+ > and link to your branch.
+ 
++# Developer Guide
++
++> [!NOTE]
++>
++> **The remainder of this file is dedicated to developers actively
++> working on Ghostty.** If you're a user reporting an issue, you can
++> ignore the rest of this document.
++
++## Input Stack Testing
++
++The input stack is the part of the codebase that starts with a
++key event and ends with text encoding being sent to the pty (it
++does not include _rendering_ the text, which is part of the
++font or rendering stack).
++
++If you modify any part of the input stack, you must manually verify
++all the following input cases work properly. We unfortunately do
++not automate this in any way, but if we can do that one day that'd
++save a LOT of grief and time.
++
++Note: this list may not be exhaustive, I'm still working on it.
++
++### Linux IME
++
++IME (Input Method Editors) are a common source of bugs in the input stack,
++especially on Linux since there are multiple different IME systems
++interacting with different windowing systems and application frameworks
++all written by different organizations.
++
++The following matrix should be tested to ensure that all IME input works
++properly:
++
++1. Wayland, X11
++2. ibus, fcitx, none
++3. Dead key input (e.g. Spanish), CJK (e.g. Japanese), Emoji, Unicode Hex
++4. ibus versions: 1.5.29, 1.5.30, 1.5.31 (each exhibit slightly different behaviors)
++
++> [!NOTE]
++>
++> This is a **work in progress**. I'm still working on this list and it
++> is not complete. As I find more test cases, I will add them here.
++
++#### Dead Key Input
++
++Set your keyboard layout to "Spanish" (or another layout that uses dead keys).
++
++1. Launch Ghostty
++2. Press `'`
++3. Press `a`
++4. Verify that `á` is displayed
++
++Note that the dead key may or may not show a preedit state visually.
++For ibus and fcitx it does but for the "none" case it does not. Importantly,
++the text should be correct when it is sent to the pty.
++
++We should also test canceling dead key input:
++
++1. Launch Ghostty
++2. Press `'`
++3. Press escape
++4. Press `a`
++5. Verify that `a` is displayed (no diacritic)
++
++#### CJK Input
++
++Configure fcitx or ibus with a keyboard layout like Japanese or Mozc. The
++exact layout doesn't matter.
++
++1. Launch Ghostty
++2. Press `Ctrl+Shift` to switch to "Hiragana"
++3. On a US physical layout, type: `konn`, you should see `こん` in preedit.
++4. Press `Enter`
++5. Verify that `こん` is displayed in the terminal.
++
++We should also test switching input methods while preedit is active, which
++should commit the text:
++
++1. Launch Ghostty
++2. Press `Ctrl+Shift` to switch to "Hiragana"
++3. On a US physical layout, type: `konn`, you should see `こん` in preedit.
++4. Press `Ctrl+Shift` to switch to another layout (any)
++5. Verify that `こん` is displayed in the terminal as committed text.
++
+ ## Nix Virtual Machines
+ 
+ Several Nix virtual machine definitions are provided by the project for testing
+diff --git a/src/apprt/gtk/Surface.zig b/src/apprt/gtk/Surface.zig
+index 1ca39425bf..b34ca9aa3c 100644
+--- a/src/apprt/gtk/Surface.zig
++++ b/src/apprt/gtk/Surface.zig
+@@ -368,7 +368,7 @@ cursor_pos: apprt.CursorPos,
+ inspector: ?*inspector.Inspector = null,
+ 
+ /// Key input states. See gtkKeyPressed for detailed descriptions.
+-in_keyevent: bool = false,
++in_keyevent: IMKeyEvent = .false,
+ im_context: *c.GtkIMContext,
+ im_composing: bool = false,
+ im_buf: [128]u8 = undefined,
+@@ -378,6 +378,20 @@ im_len: u7 = 0,
+ /// details on what this is.
+ cgroup_path: ?[]const u8 = null,
+ 
++/// The state of the key event while we're doing IM composition.
++/// See gtkKeyPressed for detailed descriptions.
++pub const IMKeyEvent = enum {
++    /// Not in a key event.
++    false,
++
++    /// In a key event but im_composing was either true or false
++    /// prior to the calling IME processing. This is important to
++    /// work around different input methods calling commit and
++    /// preedit end in a different order.
++    composing,
++    not_composing,
++};
++
+ /// Configuration used for initializing the surface. We have to copy some
+ /// data since initialization is delayed with GTK (on realize).
+ pub const InitConfig = struct {
+@@ -1658,16 +1672,29 @@ pub fn keyEvent(
+             .height = 1,
+         });
+ 
+-        // Pass the event through the IM controller. This will return true
+-        // if the input method handled the event.
++        // We note that we're in a keypress because we want some logic to
++        // depend on this. For example, we don't want to send character events
++        // like "a" via the input "commit" event if we're actively processing
++        // a keypress because we'd lose access to the keycode information.
+         //
++        // We have to maintain some additional state here of whether we
++        // were composing because different input methods call the callbacks
++        // in different orders. For example, ibus calls commit THEN preedit
++        // end but simple calls preedit end THEN commit.
++        self.in_keyevent = if (self.im_composing) .composing else .not_composing;
++        defer self.in_keyevent = .false;
++
++        // Pass the event through the input method which returns true if handled.
+         // Confusingly, not all events handled by the input method result
+-        // in this returning true so we have to maintain some local state to
+-        // find those and in one case we simply lose information.
++        // in this returning true so we have to maintain some additional
++        // state about whether we were composing or not to determine if
++        // we should proceed with key encoding.
++        //
++        // Cases where the input method does not mark the event as handled:
+         //
+         // - If we change the input method via keypress while we have preedit
+         //   text, the input method will commit the pending text but will not
+-        //   mark it as handled. We use the `was_composing` variable to detect
++        //   mark it as handled. We use the `.composing` state to detect
+         //   this case.
+         //
+         // - If we switch input methods (i.e. via ctrl+shift with fcitx),
+@@ -1678,19 +1705,10 @@ pub fn keyEvent(
+         //   triggered despite being technically consumed. At the time of
+         //   writing, both Kitty and Alacritty have the same behavior. I
+         //   know of no way to fix this.
+-        const was_composing = self.im_composing;
+-        const im_handled = filter: {
+-            // We note that we're in a keypress because we want some logic to
+-            // depend on this. For example, we don't want to send character events
+-            // like "a" via the input "commit" event if we're actively processing
+-            // a keypress because we'd lose access to the keycode information.
+-            self.in_keyevent = true;
+-            defer self.in_keyevent = false;
+-            break :filter c.gtk_im_context_filter_keypress(
+-                self.im_context,
+-                event,
+-            ) != 0;
+-        };
++        const im_handled = c.gtk_im_context_filter_keypress(
++            self.im_context,
++            event,
++        ) != 0;
+         // log.warn("GTKIM: im_handled={} im_len={} im_composing={}", .{
+         //     im_handled,
+         //     self.im_len,
+@@ -1713,7 +1731,7 @@ pub fn keyEvent(
+             // Example: enable Japanese input method, press "konn" and then
+             // press enter. The final enter should not be encoded and "konn"
+             // (in hiragana) should be written as "こん".
+-            if (was_composing) return true;
++            if (self.in_keyevent == .composing) return true;
+ 
+             // Not composing and our input method buffer is empty. This could
+             // mean that the input method reacted to this event by activating
+@@ -1892,7 +1910,6 @@ fn gtkInputPreeditChanged(
+     ctx: *c.GtkIMContext,
+     ud: ?*anyopaque,
+ ) callconv(.C) void {
+-    // log.warn("GTKIM: preedit change", .{});
+     const self = userdataSelf(ud.?);
+ 
+     // Get our pre-edit string that we'll use to show the user.
+@@ -1902,6 +1919,7 @@ fn gtkInputPreeditChanged(
+     const str = std.mem.sliceTo(buf, 0);
+ 
+     // Update our preedit state in Ghostty core
++    // log.warn("GTKIM: preedit change str={s}", .{str});
+     self.core_surface.preeditCallback(str) catch |err| {
+         log.err("error in preedit callback err={}", .{err});
+     };
+@@ -1928,26 +1946,48 @@ fn gtkInputCommit(
+     bytes: [*:0]u8,
+     ud: ?*anyopaque,
+ ) callconv(.C) void {
+-    // log.warn("GTKIM: input commit", .{});
+     const self = userdataSelf(ud.?);
+     const str = std.mem.sliceTo(bytes, 0);
+ 
+-    // If we're in a keyEvent (i.e. a keyboard event) and we're not composing,
+-    // then this is just a normal key press resulting in UTF-8 text. We
+-    // want the keyEvent to handle this so that the UTF-8 text can be associated
+-    // with a keyboard event.
+-    if (!self.im_composing and self.in_keyevent) {
+-        if (str.len > self.im_buf.len) {
+-            log.warn("not enough buffer space for input method commit", .{});
+-            return;
+-        }
++    // log.debug("GTKIM: input commit composing={} keyevent={} str={s}", .{
++    //     self.im_composing,
++    //     self.in_keyevent,
++    //     str,
++    // });
+ 
+-        // Copy our committed text to the buffer
+-        @memcpy(self.im_buf[0..str.len], str);
+-        self.im_len = @intCast(str.len);
++    // We need to handle commit specially if we're in a key event.
++    // Specifically, GTK will send us a commit event for basic key
++    // encodings like "a" (on a US layout keyboard). We don't want
++    // to treat this as IME committed text because we want to associate
++    // it with a key event (i.e. "a" key press).
++    switch (self.in_keyevent) {
++        // If we're not in a key event then this commit is from
++        // some other source (i.e. on-screen keyboard, tablet, etc.)
++        // and we want to commit the text to the core surface.
++        .false => {},
++
++        // If we're in a composing state and in a key event then this
++        // key event is resulting in a commit of multiple keypresses
++        // and we don't want to encode it alongside the keypress.
++        .composing => {},
++
++        // If we're not composing then this commit is just a normal
++        // key encoding and we want our key event to handle it so
++        // that Ghostty can be aware of the key event alongside
++        // the text.
++        .not_composing => {
++            if (str.len > self.im_buf.len) {
++                log.warn("not enough buffer space for input method commit", .{});
++                return;
++            }
+ 
+-        // log.debug("input commit len={}", .{self.im_len});
+-        return;
++            // Copy our committed text to the buffer
++            @memcpy(self.im_buf[0..str.len], str);
++            self.im_len = @intCast(str.len);
++
++            // log.debug("input commit len={}", .{self.im_len});
++            return;
++        },
+     }
+ 
+     // If we reach this point from above it means we're composing OR
