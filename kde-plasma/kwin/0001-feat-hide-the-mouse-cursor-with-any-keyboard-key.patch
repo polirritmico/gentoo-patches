@@ -1,0 +1,28 @@
+From a619ada388970e24fe16df909179b4b1e298489e Mon Sep 17 00:00:00 2001
+From: polirritmico <ebray187@gmail.com>
+Date: Mon, 28 Apr 2025 00:50:09 -0400
+Subject: [PATCH] feat: hide the mouse cursor with any keyboard key
+
+---
+ src/plugins/hidecursor/hidecursor.cpp | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/src/plugins/hidecursor/hidecursor.cpp b/src/plugins/hidecursor/hidecursor.cpp
+index 1348584..25253aa 100644
+--- a/src/plugins/hidecursor/hidecursor.cpp
++++ b/src/plugins/hidecursor/hidecursor.cpp
+@@ -92,10 +92,7 @@ void HideCursorEffect::keyboardKey(KeyboardKeyEvent *event)
+ {
+     // All functional keys have a Qt key code greater than 0x01000000
+     // https://doc.qt.io/qt-6/qt.html#Key-enum
+-    // We don't want to hide the cursor when the user presses a functional key, since they are
+-    // usually interleaved with mouse movements.
+-    if (m_hideOnTyping && !m_cursorHidden && event->state == KeyboardKeyState::Pressed && event->key < 0x01000000
+-        && (event->modifiers == Qt::NoModifier || event->modifiers == Qt::ShiftModifier)) {
++    if (m_hideOnTyping && !m_cursorHidden && event->state == KeyboardKeyState::Pressed) {
+         hideCursor();
+     }
+ }
+-- 
+2.49.0
+
