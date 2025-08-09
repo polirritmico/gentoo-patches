@@ -1,0 +1,29 @@
+From 4230d96d5be8f77384c55c6f5d2000f23dcea3bb Mon Sep 17 00:00:00 2001
+From: polirritmico <ebray187@gmail.com>
+Date: Fri, 8 Aug 2025 20:29:06 -0400
+Subject: [PATCH] fix: correct "context has already been set" error
+
+---
+ mcomix/__main__.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/mcomix/__main__.py b/mcomix/__main__.py
+index bc307bd..b32dc36 100644
+--- a/mcomix/__main__.py
++++ b/mcomix/__main__.py
+@@ -21,10 +21,10 @@ from .run import run
+ 
+ 
+ def main() -> None:
+-    mp.freeze_support()
+-    mp.set_start_method('spawn')
+     run()
+ 
+ 
+ if __name__ == '__main__':
++    mp.freeze_support()
++    mp.set_start_method('spawn')
+     main()
+-- 
+2.49.1
+
